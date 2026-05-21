@@ -1,0 +1,6 @@
+{
+    "python.defaultInterpreterPath": "C:\\Users\\369QWE\\micromamba\\envs\\yolov8\\python.exe",
+    "python.terminal.activateEnvironment": true,
+    "pylance.typeCheckingMode": "basic",
+    "python-envs.defaultEnvManager": "ms-python.python:system"
+}
