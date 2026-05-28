@@ -1,77 +1,90 @@
-import cv2
+"""分布式高并发无界面边缘交互核心控制总线入口主程序。"""
+
 import time
-import mediapipe as mp
+from multiprocessing import Process, Queue, Value
+import cv2
+import numpy as np
+from core.control_filter import ControlFilter
 from core.messenger import SerialMessenger
-from core.face_yolo import FaceYOLO
-from core.hand_mp import HandDetector
+from core.pipeline_workers import run_face_tracking, run_hand_perception, run_voice_asr
 
 MODEL_PATH = "weights/best.pt"
 
-def run_vision_loop():
+
+def main():
+    """配置底层多核心并发执行环境并拉起无界面边缘控制路由器。"""
+    is_tracking = Value('b', 0)
+    h_mode = Value('B', 0x02)
+    h_scale = Value('f', 50.0)
+    out_dx = Value('i', 0)
+    out_dy = Value('i', 0)
+
+    hand_queue = Queue(maxsize=1)
+    face_queue = Queue(maxsize=1)
+
+    processes = [
+        Process(target=run_hand_perception, 
+                args=(hand_queue, is_tracking, h_mode, h_scale), daemon=True),
+        Process(target=run_face_tracking, 
+                args=(face_queue, is_tracking, out_dx, out_dy, MODEL_PATH), 
+                daemon=True),
+        Process(target=run_voice_asr, 
+                args=(is_tracking, h_mode), daemon=True)
+    ]
+    for p in processes:
+        p.start()
+
+    # 🛠️ 串口物理接口挂载与非阻塞降级安全过滤
     messenger = SerialMessenger('COM10', 115200)
-    hand_det = HandDetector()
-    face_det = FaceYOLO(MODEL_PATH)
-    
-    is_tracking_active = False 
+    if messenger.ser is None or not messenger.ser.is_open:
+        print("WARNING: Physical serial device missing. Running in simulation mode.")
+
     cap = cv2.VideoCapture(0, cv2.CAP_DSHOW)
-    prev_time = time.time()
+    if not cap.isOpened():
+        print("ERROR: High-speed optical capture hardware connection failed.")
+        messenger.close()
+        return
 
-    while True:
-        success, frame = cap.read()
-        if not success: break
+    signal_filter = ControlFilter(alpha=0.25)
+    last_scale = 50.0
+    print("INFO: Master orchestrator pipeline running headless mode smoothly.")
 
-        # --- 核心改进：无论是否在追踪，每帧都检测手势 ---
-        h_mode, h_dx, h_dy, h_debug = hand_det.get_control_signal(frame)
+    try:
+        while True:
+            success, frame = cap.read()
+            if not success:
+                break
 
-        # 逻辑判断：手势拥有最高优先级的“切换权”
-        if h_mode == 0x01: # 食指竖起 -> 强制开启人脸追踪
-            if not is_tracking_active:
-                is_tracking_active = True
-                print(">>> 开启人脸追踪")
-        elif h_mode == 0x03: # 剪刀手/其他设定手势 -> 强制关闭并归位
-            if is_tracking_active:
-                is_tracking_active = False
-                print(">>> 关闭人脸追踪，回到手势模式")
+            if hand_queue.empty():
+                try: hand_queue.put_nowait(frame)
+                except: pass
+            if is_tracking.value == 1 and face_queue.empty():
+                try: face_queue.put_nowait(frame)
+                except: pass
 
-        # --- 决策当前发送给串口的数据 ---
-        if is_tracking_active:
-            # 执行人脸追踪
-            mode, dx, dy, debug_data = face_det.get_control_signal(frame)
-            # 如果人脸跟丢了，我们不立即切回手势，保持追踪模式发送 mode 0x02 让云台停住
-        else:
-            # 执行手势控制（或者单纯待命）
-            mode, dx, dy, debug_data = h_mode, h_dx, h_dy, h_debug
+            final_mode, render_dx, render_dy = signal_filter.process_signals(
+                h_mode.value, h_scale.value, last_scale, 
+                float(out_dx.value), float(out_dy.value)
+            )
+            last_scale = h_scale.value
 
-        # 发送协议
-        messenger.send_target_offset(mode, dx, dy)
+            gain = float(np.clip(50.0 / max(h_scale.value, 10.0), 0.4, 2.2))
 
-        # --- 绘制调试画面 (合并显示) ---
-        # 1. 如果有手势，画手
-        if h_debug:
-            mp.solutions.drawing_utils.draw_landmarks(
-                frame, h_debug, mp.solutions.hands.HAND_CONNECTIONS)
-        
-        # 2. 如果有人脸且在追踪，画框
-        if is_tracking_active and debug_data and hasattr(debug_data, 'plot'):
-            # 这里的 debug_data 是 face_det 返回的 results[0]
-            # 为了不覆盖掉手部骨骼，我们直接在原图画框
-            for box in debug_data.boxes:
-                b = box.xyxy[0].cpu().numpy()
-                cv2.rectangle(frame, (int(b[0]), int(b[1])), (int(b[2]), int(b[3])), (0, 255, 0), 2)
+            # 如果串口在线，正常灌入总线；如果不在线，则上位机在后台安静运算
+            if messenger.ser and messenger.ser.is_open:
+                messenger.send_target_offset(
+                    final_mode, int(render_dx * gain), int(render_dy * gain)
+                )
+            time.sleep(0.01)
 
-        # 状态显示
-        fps = 1.0 / (time.time() - prev_time)
-        prev_time = time.time()
-        color = (0, 255, 0) if is_tracking_active else (0, 255, 255)
-        cv2.putText(frame, f"FPS: {int(fps)} | ACTIVE: {is_tracking_active} | MODE: {hex(mode)}", 
-                    (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.7, color, 2)
+    except KeyboardInterrupt:
+        print("INFO: Master orchestrator pipeline received manual interrupt code.")
+    finally:
+        for p in processes:
+            p.terminate()
+        cap.release()
+        messenger.close()
 
-        cv2.imshow("Gimbal Pro Control", frame)
-        if cv2.waitKey(1) & 0xFF == ord('q'): break
-
-    cap.release()
-    messenger.close()
-    cv2.destroyAllWindows()
 
 if __name__ == "__main__":
-    run_vision_loop()
+    main()
