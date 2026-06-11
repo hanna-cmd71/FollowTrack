@@ -7,14 +7,14 @@ from core.hand_mp import HandDetector
 from core.voice_asr import MoonshineVoiceRecognizer
 
 
+"""core/pipeline_workers.py 的 run_hand_perception 函数"""
 def run_hand_perception(frame_queue: Queue, is_tracking: Value, h_mode: Value, h_scale: Value):
     hand_det = HandDetector()
     print("INFO: [Worker-Hand] MediaPipe engine thread active.")
 
-    locked_state = 0x02
-    track_frame_count = 0
-    sleep_frame_count = 0
-    REQUIRED_FRAMES = 5
+    track_confirm_count = 0
+    home_confirm_count = 0
+    DEBOUNCE_THRESHOLD = 3  
 
     while True:
         if not frame_queue.empty():
@@ -25,92 +25,101 @@ def run_hand_perception(frame_queue: Queue, is_tracking: Value, h_mode: Value, h
             small_frame = cv2.resize(frame, (320, 240))
             res_mode, _, _, res_scale = hand_det.get_control_signal(small_frame)
 
-            if (res_mode != 0x00 and 
-                isinstance(res_scale, (int, float)) and res_scale > 0):
-                h_scale.value = float(res_scale)
+            if res_mode != 0x00 and isinstance(res_scale, (int, float)) and res_scale > 0:
+            
+                h_scale.value = float(0.3 * res_scale + 0.7 * h_scale.value)
 
-            match res_mode:
-                case 0x01:  
-                    track_frame_count += 1
-                    sleep_frame_count = 0
-                case 0x03:  
-                    sleep_frame_count += 1
-                    track_frame_count = 0
-                case 0x02 | 0x00:  # 模糊手势 或 目标丢失（空转保护锁）
-                    # 计数器清零，但绝对不撤销、不重置当前的运行状态锁！
-                    track_frame_count = 0
-                    sleep_frame_count = 0
-                case _:  # 缺省兜底安全拦截
-                    track_frame_count = 0
-                    sleep_frame_count = 0
+            if res_mode == 0x01: 
+                track_confirm_count += 1
+                home_confirm_count = 0
+                if track_confirm_count >= DEBOUNCE_THRESHOLD:
+                    if h_mode.value != 0x01:
+                        h_mode.value = 0x01
+                        is_tracking.value = 1
+                        print("INFO: [Hand-State] Gesture Confirmed -> MODE_TRACK")
+            elif res_mode == 0x03:  
+                home_confirm_count += 1
+                track_confirm_count = 0
+                if home_confirm_count >= DEBOUNCE_THRESHOLD:
+                    if h_mode.value != 0x03:
+                        h_mode.value = 0x03
+                        is_tracking.value = 0
+                        print("INFO: [Hand-State] Gesture Confirmed -> MODE_HOME")
+            else:
+                # 如果是 0x00(无手) 或 0x02(模糊状态)，清空确认计数器，保持当前行为，不盲目覆盖
+                track_confirm_count = 0
+                home_confirm_count = 0
 
-            # --- 迟滞状态机时序窗口判决 ---
-            if track_frame_count >= REQUIRED_FRAMES and locked_state != 0x01:
-                locked_state = 0x01
-                is_tracking.value = 1
-                h_mode.value = 0x01
-                print(">>> [Hysteresis Filter]: State flip to [TRACKING].")
-                track_frame_count = 0
-            elif sleep_frame_count >= REQUIRED_FRAMES and locked_state != 0x02:
-                locked_state = 0x02
-                is_tracking.value = 0
-                h_mode.value = 0x03
-                print(">>> [Hysteresis Filter]: State flip to [SLEEPY].")
-                sleep_frame_count = 0
-
-            if locked_state == 0x01 and res_mode != 0x01:
-                h_mode.value = 0x01
         else:
-            time.sleep(0.005)
+            time.sleep(0.01)
 
 
 def run_face_tracking(frame_queue: Queue, is_tracking: Value, out_dx: Value, out_dy: Value, model_path: str):
-    
     face_det = FaceYOLO(model_path)
     print("INFO: [Worker-Face] YOLOv8 CUDA engine thread active.")
 
     while True:
-        # 静态拦截：系统未进入追踪状态时挂起，定时清空死帧缓冲队列，杜绝数据积压时延
         if is_tracking.value == 0:
             while not frame_queue.empty():
-                try:
-                    frame_queue.get_nowait()
-                except:
-                    break
+                try: frame_queue.get_nowait()
+                except: break
             time.sleep(0.02)
             continue
 
         if not frame_queue.empty():
-            frame = frame_queue.get()
-            if frame is None:
-                break
+            latest_frame = None
+            while not frame_queue.empty():
+                try:
+                    latest_frame = frame_queue.get_nowait()
+                except:
+                    break
+        
+            if latest_frame is None:
+                time.sleep(0.002)
+                continue
 
-            small_frame = cv2.resize(frame, (320, 240))
+            # 缩放分辨率至边缘端专用尺寸
+            small_frame = cv2.resize(latest_frame, (320, 240))
+            
+            # 执行前向回归
             _, dx, dy, _ = face_det.get_control_signal(small_frame)
 
-            out_dx.value = dx
-            out_dy.value = dy
+            # 原子注入多进程总线
+            out_dx.value = int(dx)
+            out_dy.value = int(dy)
         else:
-            time.sleep(0.005)
+            time.sleep(0.002) # 极高频轮询，不放过任何新帧
 
 
 def run_voice_asr(is_tracking: Value, h_mode: Value):
-    """高级语音流特征解析后台进程，调度本地大模型环境进行上下文情感匹配。"""
     try:
         m_vr = MoonshineVoiceRecognizer()
         m_vr.start_listening()
         print("INFO: [Worker-Voice] Moonshine ASR engine listener active.")
     except Exception as e:
-        print(f"WARNING: [Worker-Voice] Peripheral audio instance error: {e}")
+        print(f"WARNING: [Worker-Voice] Peripheral audio driver initialization failed: {e}")
         return
 
     while True:
-        cmd_code = m_vr.get_keyword_command()
-        if cmd_code is not None:
-            h_mode.value = cmd_code
-            if cmd_code == 0x01:
-                is_tracking.value = 1
-            elif cmd_code == 0x03:
-                is_tracking.value = 0
-        else:
-            time.sleep(0.01)
+        try:
+            # 【核心修复点】：将原先错误的 get_keyword_command() 改为您真实的 recognize_speech()
+            cmd_code = m_vr.recognize_speech()
+            
+            if cmd_code is not None:
+                # 只有识别出有效动作时才修改状态机，防止 None 覆盖正常状态
+                if cmd_code == 0x01:    # 启动/追踪
+                    is_tracking.value = 1
+                    h_mode.value = 0x01
+                elif cmd_code == 0x03:  # 休眠/退下
+                    is_tracking.value = 0
+                    h_mode.value = 0x03
+                elif cmd_code in [0x04, 0x05]: # 快乐笑脸 或 惊吓 Panic 模式
+                    # 在这两种特殊模式下，由决策树决定是否继续保持视觉追踪
+                    h_mode.value = cmd_code
+                
+                print(f"INFO: [Worker-Voice] State Synced -> mode: {hex(h_mode.value)}, tracking: {is_tracking.value}")
+        except Exception as e:
+            print(f"WARNING: [Worker-Voice] Process cycle inner exception: {e}")
+        
+        # 释放 CPU，给音频采集硬件流留出缓冲时间
+        time.sleep(0.1)

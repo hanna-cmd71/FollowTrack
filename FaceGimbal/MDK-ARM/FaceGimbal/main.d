@@ -24,11 +24,13 @@ facegimbal\main.o: ../Drivers/STM32F1xx_HAL_Driver/Inc/stm32f1xx_hal_dma_ex.h
 facegimbal\main.o: ../Drivers/STM32F1xx_HAL_Driver/Inc/stm32f1xx_hal_cortex.h
 facegimbal\main.o: ../Drivers/STM32F1xx_HAL_Driver/Inc/stm32f1xx_hal_flash.h
 facegimbal\main.o: ../Drivers/STM32F1xx_HAL_Driver/Inc/stm32f1xx_hal_flash_ex.h
+facegimbal\main.o: ../Drivers/STM32F1xx_HAL_Driver/Inc/stm32f1xx_hal_i2c.h
 facegimbal\main.o: ../Drivers/STM32F1xx_HAL_Driver/Inc/stm32f1xx_hal_pwr.h
 facegimbal\main.o: ../Drivers/STM32F1xx_HAL_Driver/Inc/stm32f1xx_hal_tim.h
 facegimbal\main.o: ../Drivers/STM32F1xx_HAL_Driver/Inc/stm32f1xx_hal_tim_ex.h
 facegimbal\main.o: ../Drivers/STM32F1xx_HAL_Driver/Inc/stm32f1xx_hal_uart.h
 facegimbal\main.o: ../Core/Inc/dma.h
+facegimbal\main.o: ../Core/Inc/i2c.h
 facegimbal\main.o: ../Core/Inc/tim.h
 facegimbal\main.o: ../Core/Inc/usart.h
 facegimbal\main.o: ../Core/Inc/gpio.h
@@ -40,3 +42,7 @@ facegimbal\main.o: ../User/PID.h
 facegimbal\main.o: D:\RM\Keil\Core\ARM\ARMCC\Bin\..\include\string.h
 facegimbal\main.o: ../User/vofa.h
 facegimbal\main.o: ../User/gimbal_ctrl.h
+facegimbal\main.o: ../User/OLED_IIC_Config.h
+facegimbal\main.o: ../User/OLED_Function.h
+facegimbal\main.o: ../User/OLED_Front.h
+facegimbal\main.o: ../User/OLED_Emotion.h

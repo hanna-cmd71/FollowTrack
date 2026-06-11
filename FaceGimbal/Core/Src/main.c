@@ -19,6 +19,7 @@
 /* Includes ------------------------------------------------------------------*/
 #include "main.h"
 #include "dma.h"
+#include "i2c.h"
 #include "tim.h"
 #include "usart.h"
 #include "gpio.h"
@@ -33,6 +34,10 @@
 #include "math.h"
 #include "vofa.h"
 #include "gimbal_ctrl.h"
+#include "OLED_IIC_Config.h"
+#include "OLED_Function.h"
+#include "OLED_Front.h"
+#include "OLED_Emotion.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -52,7 +57,7 @@
 
 /* Private variables ---------------------------------------------------------*/
 
-/* USER CODE BEGIN PV */\
+/* USER CODE BEGIN PV */
 
 
 
@@ -62,7 +67,8 @@ PID_t pid_yaw;
 PID_t pid_pitch;
 float pid_yaw_pararm[3] = {0.0205, 0.001, 0.1};
 float pid_pitch_pararm[3] = {0.02, 0.001, 0.115};
-
+uint32_t last_gimbal_time = 0;
+uint32_t last_oled_time = 0;
 
 
 /* USER CODE END PV */
@@ -113,6 +119,7 @@ int main(void)
   MX_TIM2_Init();
   MX_USART1_UART_Init();
   MX_USART2_UART_Init();
+  MX_I2C2_Init();
   /* USER CODE BEGIN 2 */
 	Servo_Init(&servo_yaw, &htim2, TIM_CHANNEL_1, 0.0f, 180.0f);
   Set_Angle(&servo_yaw, 80.0f);
@@ -121,6 +128,11 @@ int main(void)
   Protocol_Init(&huart1);
   PID_init(&pid_yaw, PID_POSITION, pid_yaw_pararm, 2.0f, 1.0f);
   PID_init(&pid_pitch, PID_POSITION, pid_pitch_pararm, 2.0f, 1.0f);
+	OLED_Init();
+	Robot_Emotion_Init();
+	Protocol_Init(&huart1);
+	uint32_t ctrl_tick = HAL_GetTick();
+  uint32_t oled_tick = HAL_GetTick();
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -130,14 +142,29 @@ int main(void)
   while (1)
   {
     
-		Gimbal_Control_Loop();
-    
-		float debug_data[3];
-    debug_data[0] = pid_pitch.set;  // 目标值（通常是 0）
-    debug_data[1] = pid_pitch.fdb;  // 当前视觉反馈的 dy 偏移量
-    debug_data[2] = pid_pitch.out;  // PID 计算出的角度增量
-		VOFA_JustFloat(debug_data, 3);
-		HAL_Delay(10);
+//		Gimbal_Control_Loop();
+//    
+//		float debug_data[3];
+//    debug_data[0] = pid_pitch.set;  // 目标值（通常是 0）
+//    debug_data[1] = pid_pitch.fdb;  // 当前视觉反馈的 dy 偏移量
+//    debug_data[2] = pid_pitch.out;  // PID 计算出的角度增量
+//		VOFA_JustFloat(debug_data, 3);
+//		HAL_Delay(10);
+		uint32_t current_tick = HAL_GetTick();
+
+    /* 任务1：云台控制与 PID 环路 —— 严格每 10 毫秒(100Hz) 极其精准地强行分发一次 */
+    if (current_tick - last_gimbal_time >= 10)
+    {
+        last_gimbal_time = current_tick;
+        Gimbal_Control_Loop(); 
+    }
+
+    /* 任务2：OLED 渲染与局部刷屏 —— 每 50 毫秒(20Hz) 相对低频地平滑刷新一次 */
+    if (current_tick - last_oled_time >= 50)
+    {
+        last_oled_time = current_tick;
+        Robot_Emotion_Update(); 
+    }
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */

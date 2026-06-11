@@ -26,6 +26,7 @@ facegimbal\gimbal_ctrl.o: ../Drivers/STM32F1xx_HAL_Driver/Inc/stm32f1xx_hal_dma_
 facegimbal\gimbal_ctrl.o: ../Drivers/STM32F1xx_HAL_Driver/Inc/stm32f1xx_hal_cortex.h
 facegimbal\gimbal_ctrl.o: ../Drivers/STM32F1xx_HAL_Driver/Inc/stm32f1xx_hal_flash.h
 facegimbal\gimbal_ctrl.o: ../Drivers/STM32F1xx_HAL_Driver/Inc/stm32f1xx_hal_flash_ex.h
+facegimbal\gimbal_ctrl.o: ../Drivers/STM32F1xx_HAL_Driver/Inc/stm32f1xx_hal_i2c.h
 facegimbal\gimbal_ctrl.o: ../Drivers/STM32F1xx_HAL_Driver/Inc/stm32f1xx_hal_pwr.h
 facegimbal\gimbal_ctrl.o: ../Drivers/STM32F1xx_HAL_Driver/Inc/stm32f1xx_hal_tim.h
 facegimbal\gimbal_ctrl.o: ../Drivers/STM32F1xx_HAL_Driver/Inc/stm32f1xx_hal_tim_ex.h

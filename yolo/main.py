@@ -1,5 +1,3 @@
-"""分布式高并发无界面边缘交互核心控制总线入口主程序。"""
-
 import time
 from multiprocessing import Process, Queue, Value
 import cv2
@@ -12,7 +10,7 @@ MODEL_PATH = "weights/best.pt"
 
 
 def main():
-    """配置底层多核心并发执行环境并拉起无界面边缘控制路由器。"""
+
     is_tracking = Value('b', 0)
     h_mode = Value('B', 0x02)
     h_scale = Value('f', 50.0)
@@ -34,7 +32,6 @@ def main():
     for p in processes:
         p.start()
 
-    # 🛠️ 串口物理接口挂载与非阻塞降级安全过滤
     messenger = SerialMessenger('COM10', 115200)
     if messenger.ser is None or not messenger.ser.is_open:
         print("WARNING: Physical serial device missing. Running in simulation mode.")
@@ -70,7 +67,6 @@ def main():
 
             gain = float(np.clip(50.0 / max(h_scale.value, 10.0), 0.4, 2.2))
 
-            # 如果串口在线，正常灌入总线；如果不在线，则上位机在后台安静运算
             if messenger.ser and messenger.ser.is_open:
                 messenger.send_target_offset(
                     final_mode, int(render_dx * gain), int(render_dy * gain)

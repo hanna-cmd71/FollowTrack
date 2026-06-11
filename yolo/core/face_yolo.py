@@ -29,29 +29,25 @@ class FaceYOLO(BaseDetector):
         
         # 观测矩阵配置：系统仅可直接观测到目标的像素质心坐标 x 和 y
         self.kf.measurementMatrix = np.array(
-            [[1, 0, 0, 0], [0, 1, 0, 0]], np.float32
-        )
-        
-        # 状态转移矩阵配置：下一时刻位置 = 当前位置 + 当前速度 * 采样周期
-        self.kf.transitionMatrix = np.array(
-            [[1, 0, 1, 0], 
-             [0, 1, 0, 1], 
-             [0, 0, 1, 0], 
-             [0, 0, 0, 1]], np.float32
+            [[1, 0, 0, 0], [0, 1, 0, 0]], dtype=np.float32
         )
 
-        # 过程噪声与测量噪声协方差矩阵设定
-        self.kf.processNoiseCov = np.eye(4, dtype=np.float32) * 0.01
-        self.kf.measurementNoiseCov = np.eye(2, dtype=np.float32) * 0.1
+        # ====== 【核心修复点】：修正 OpenCV Python 绑定的属性命名，去掉 ❌ covariance 后缀 ======
+        # 1. 过程噪声协方差矩阵（允许目标速度快速切换）
+        self.kf.processNoiseCov = np.eye(4, dtype=np.float32) * 1e-2 
 
+        # 2. 测量噪声协方差矩阵（抗传感器高频抖动）
+        self.kf.measurementNoiseCov = np.eye(2, dtype=np.float32) * 1e-1
+
+        # 3. 后验错误协方差矩阵（初始状态置信度评估）
+        self.kf.errorCovPost = np.eye(4, dtype=np.float32) * 1.0
+        # ===================================================================================
+
+        # 目标丢失计数器，用于丢失目标后的平滑衰减
         self.lost_count = 0
-        self.MAX_LOST_FRAMES = 5  # 允许连续盲跟的最大时序跨度
 
     def get_control_signal(self, frame: np.ndarray) -> tuple[int, int, int, float]:
-        """执行全流水线的目标检测、卡尔曼状态预测与边界回归。
-
-        Args:
-            frame: 当前相机捕获的原始图像。
+        """调度物理相机捕获的原始图像。
 
         Returns:
             Tuple[int, int, int, float]: 格式为 (mode, dx, dy, target_width)。
@@ -85,19 +81,26 @@ class FaceYOLO(BaseDetector):
             self.kf.correct(
                 np.array(
                     [[np.float32(measured_x)], [np.float32(measured_y)]],
-                    dtype=np.float32,
+                    dtype=np.float32
                 )
             )
 
+            # 计算人脸中心相对画面中心的物理像素偏差量
             dx = int(measured_x - center_x)
             dy = int(measured_y - center_y)
-            return 0x01, dx, dy, float(box[2])
+            target_width = float(box[2])
 
-        # 若当前帧目标丢失，进入基于先验物理速度的盲跟状态
-        self.lost_count += 1
-        if self.lost_count <= self.MAX_LOST_FRAMES:
-            dx = int(pred_x - center_x)
-            dy = int(pred_y - center_y)
-            return 0x01, dx, dy, 0.0
+            return 0x01, dx, dy, target_width
 
-        return 0x02, 0, 0, 0.0
+        else:
+            # 目标丢失状态处理机制
+            self.lost_count += 1
+            
+            if self.lost_count < 10:
+                # 10帧以内采用卡尔曼先验预测值维持盲追，防止高频瞬时丢包导致的云台剧烈顿挫
+                dx = int(pred_x - center_x)
+                dy = int(pred_y - center_y)
+                return 0x01, dx, dy, 0.0
+            else:
+                # 超过10帧彻底判定目标丢失，进入回中或平稳锁定模式
+                return 0x02, 0, 0, 0.0

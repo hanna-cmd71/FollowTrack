@@ -23,6 +23,7 @@ facegimbal\stm32f1xx_hal_gpio_ex.o: ../Drivers/STM32F1xx_HAL_Driver/Inc/stm32f1x
 facegimbal\stm32f1xx_hal_gpio_ex.o: ../Drivers/STM32F1xx_HAL_Driver/Inc/stm32f1xx_hal_cortex.h
 facegimbal\stm32f1xx_hal_gpio_ex.o: ../Drivers/STM32F1xx_HAL_Driver/Inc/stm32f1xx_hal_flash.h
 facegimbal\stm32f1xx_hal_gpio_ex.o: ../Drivers/STM32F1xx_HAL_Driver/Inc/stm32f1xx_hal_flash_ex.h
+facegimbal\stm32f1xx_hal_gpio_ex.o: ../Drivers/STM32F1xx_HAL_Driver/Inc/stm32f1xx_hal_i2c.h
 facegimbal\stm32f1xx_hal_gpio_ex.o: ../Drivers/STM32F1xx_HAL_Driver/Inc/stm32f1xx_hal_pwr.h
 facegimbal\stm32f1xx_hal_gpio_ex.o: ../Drivers/STM32F1xx_HAL_Driver/Inc/stm32f1xx_hal_tim.h
 facegimbal\stm32f1xx_hal_gpio_ex.o: ../Drivers/STM32F1xx_HAL_Driver/Inc/stm32f1xx_hal_tim_ex.h
