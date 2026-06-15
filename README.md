@@ -16,28 +16,46 @@
 * **`core/messenger.py`**：纯非阻塞瞬时分发串口协议层。
 
 下位机
-+-----------------------------------------------------------------------+
-|                       应用控制层 (Application Layer)                   |
-|   [gimbal_ctrl] 云台主状态机调度        [OLED_Emotion] 智能仿生表情状态机    |
-+-----------------------------------------------------------------------+
-                                   |
-                                   v
-+-----------------------------------------------------------------------+
-|                       核心算法层 (Algorithm Layer)                    |
-|   [PID] 位置/增量式PID控制算法          [Filter] 一阶低通滤波器 (Alpha=0.4) |
-+-----------------------------------------------------------------------+
-                                   |
-                                   v
-+-----------------------------------------------------------------------+
-|                    协议与通信层 (Communication Layer)                 |
-|   [protocol] 上游视觉(YOLO)数据解析     [vofa] VOFA+ 协议(JustFloat/Fire)  |
-+-----------------------------------------------------------------------+
-                                   |
-                                   v
-+-----------------------------------------------------------------------+
-|                    硬件驱动层 (Hardware Driver Layer)                 |
-|   [Servo] PWM 舵机角度及限幅控制       [OLED] I2C SSD1306 显存安全驱动      |
-+-----------------------------------------------------------------------+
+
+graph TD
+    %% 样式定义
+    classDef app fill:#e1f5fe,stroke:#01579b,stroke-width:2px;
+    classDef algo fill:#e8f5e9,stroke:#1b5e20,stroke-width:2px;
+    classDef comm fill:#fff3e0,stroke:#e65100,stroke-width:2px;
+    classDef hw fill:#fafafa,stroke:#212121,stroke-width:2px;
+
+    %% 架构分层
+    subgraph Layer1 [应用控制层 Application Layer]
+        A["[gimbal_ctrl] 云台主状态机调度"]
+        B["[OLED_Emotion] 智能仿生表情状态机"]
+    end
+
+    subgraph Layer2 [核心算法层 Algorithm Layer]
+        C["[PID] 位置/增量式PID控制算法"]
+        D["[Filter] 一阶低通滤波器 (Alpha=0.4)"]
+    end
+
+    subgraph Layer3 [协议与通信层 Communication Layer]
+        E["[protocol] 上游视觉(YOLO)数据解析"]
+        F["[vofa] VOFA+ 协议(JustFloat/Fire)"]
+    end
+
+    subgraph Layer4 [硬件驱动层 Hardware Driver Layer]
+        G["[Servo] PWM 舵机角度及限幅控制"]
+        H["[OLED] I2C SSD1306 显存安全驱动"]
+    end
+
+    %% 数据与控制流向
+    Layer1 --> Layer2
+    Layer2 --> Layer3
+    Layer3 --> Layer4
+
+    %% 应用样式
+    class A,B app;
+    class C,D algo;
+    class E,F comm;
+    class G,H hw;
+
 ---
 
 ## 环境依赖
