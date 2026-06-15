@@ -17,54 +17,17 @@
 
 下位机
 
-```mermaid
-graph TD
-    %% 样式定义
-    classDef app fill:#e1f5fe,stroke:#01579b,stroke-width:2px;
-    classDef algo fill:#e8f5e9,stroke:#1b5e20,stroke-width:2px;
-    classDef comm fill:#fff3e0,stroke:#e65100,stroke-width:2px;
-    classDef hw fill:#fafafa,stroke:#212121,stroke-width:2px;
-
-    %% 架构分层
-    subgraph Layer1 [应用控制层 Application Layer]
-        A["[gimbal_ctrl] 云台主状态机调度"]
-        B["[OLED_Emotion] 智能仿生表情状态机"]
-    end
-
-    subgraph Layer2 [核心算法层 Algorithm Layer]
-        C["[PID] 位置/增量式PID控制算法"]
-        D["[Filter] 一阶低通滤波器 (Alpha=0.4)"]
-    end
-
-    subgraph Layer3 [协议与通信层 Communication Layer]
-        E["[protocol] 上游视觉(YOLO)数据解析"]
-        F["[vofa] VOFA+ 协议(JustFloat)"]
-    end
-
-    subgraph Layer4 [硬件驱动层 Hardware Driver Layer]
-        G["[Servo] PWM 舵机角度及限幅控制"]
-        H["[OLED] I2C SSD1306 显存安全驱动"]
-    end
-
-    %% 数据与控制流向
-    E --> A
-    A --> D
-    D --> C
-    C --> G
-    A --> B
-    B --> H
-    C --> F
-
-    %% 应用样式
-    class A app;
-    class B app;
-    class C algo;
-    class D algo;
-    class E comm;
-    class F comm;
-    class G hw;
-    class H hw;
-
+* **`gimbal_ctrl.c / .h`：云台主状态机调度核心**
+    * 下游系统的总调度器，
+* **`OLED_Emotion.c / .h`：仿生交互表情状态机**
+    * 数据驱动的图形状态机
+* **`PID.c / .h`：运动闭环控制器**
+    * 位置式与增量式 PID 控制算法，支持积分限幅与抗饱和
+* **`protocol.c / .h`：自适应串口协议解析器**
+    * 采用串口空闲中断（IDLE）结合 DMA 
+* **`OLED_IIC_Config.c / OLED_Function.c`：显存安全驱动基础库**
+    * 基于 SSD1306 I2C 接口提供 `ScreenBuffer[8][128]` 缓冲区动态刷新。
+* **`vofa.c / .h`：VOFA+ 实时数据调试工具**
 ---
 
 ## 环境依赖
