@@ -1,105 +1,134 @@
-from queue import Queue
+# core/voice_asr.py
+import json
+import queue
 import numpy as np
 import sounddevice as sd
+from pathlib import Path
 
 class MoonshineVoiceRecognizer:
-    def __init__(self):
-        """初始化音频缓冲队列"""
-        self.audio_queue = Queue()
+    def __init__(self, model_path="models/vosk-model-small-cn"):
+        self.audio_queue = queue.Queue(maxsize=5)
         self.sample_rate = 16000
-        self.block_size = 16000
+        self.block_size = 8000  # 0.5秒的音频块
         self.stream = None
-        self.model = None
-        self._init_model()
+        self.rec = None
+        
+        self._init_model(model_path)
 
-    def _init_model(self):
+    def _init_model(self, model_path):
+        """初始化 Vosk 语音识别模型"""
         try:
-            import moonshine_voice
-            if hasattr(moonshine_voice, 'Transcript'):
-                self.model = moonshine_voice
-                print("INFO: Successfully bound to moonshine_voice Transcript API.")
-            else:
-                self.model = None
-                print("WARNING: Transcript core not found. Voice recognition enters fallback.")
+            from vosk import Model, KaldiRecognizer
+            
+            # 检查模型是否存在
+            model_dir = Path(model_path)
+            if not model_dir.exists():
+                print(f"WARNING: Model not found at {model_path}")
+                print("Please download model from: https://alphacephei.com/vosk/models")
+                print("Or run: python download_model.py")
+                self.rec = None
+                return
+            
+            model = Model(str(model_dir))
+            self.rec = KaldiRecognizer(model, self.sample_rate)
+            print(f"INFO: Vosk model loaded successfully from {model_path}")
+            
+        except ImportError:
+            print("ERROR: Vosk not installed. Run: pip install vosk")
+            self.rec = None
         except Exception as e:
-            print(f"ERROR: Failed to initialize moonshine_voice engine: {e}")
-            self.model = None
+            print(f"ERROR: Failed to load Vosk model: {e}")
+            self.rec = None
 
-    def _audio_callback(self, indata: np.ndarray, frames: int, 
-                        time_info: dict, status: sd.CallbackFlags):
-        """音频硬件中断底层的回调函数，将数字音频流数据推入缓冲队列。"""
-        self.audio_queue.put(indata.copy())
+    def _audio_callback(self, indata: np.ndarray, frames: int, time_info: dict, status: sd.CallbackFlags):
+        """音频回调函数"""
+        if status:
+            print(f"Audio callback status: {status}")
+        if not self.audio_queue.full():
+            audio_data = indata.copy().flatten()
+            self.audio_queue.put(audio_data)
 
-    def start_listening(self):
-        """建立音频捕获上下文输入流，拉起硬件录音常驻缓冲区。"""
+    def start_listening(self, device_id=1):
+        """启动音频流监听"""
         try:
             self.stream = sd.InputStream(
+                device=device_id,
                 samplerate=self.sample_rate,
                 channels=1,
                 callback=self._audio_callback,
-                blocksize=self.block_size
+                blocksize=self.block_size,
+                dtype=np.float32
             )
             self.stream.start()
+            print(f"INFO: Voice stream started on device {device_id}")
+            return True
         except Exception as e:
-            print(f"ERROR: Audio stream hardware activation failed: {e}")
+            print(f"ERROR: Audio stream failed: {e}")
+            return False
+
+    def _map_command_to_hex(self, text: str) -> int | None:
+        """将识别的文本映射到控制命令"""
+        if not text:
+            return None
+        
+        text_lower = text.lower().strip()
+        
+        # 命令映射表
+        command_map = [
+            # 追踪模式 (0x01)
+            (['开始', '启动', '追踪', '跟随', '跟', '追', 'follow', '追综'], 0x01),
+            
+            # 回正/休眠 (0x03)
+            (['home', 'hui zheng', '回正', '归位', '休息', '停止', '停', 'stop', 'sleep', '休眠', '回去'], 0x03),
+            
+            # 快乐模式 (0x04)
+            (['happy', 'kuai le', '快乐', '高兴', '开心', 'yeah', '耶', '胜利', '比耶', '开心模式'], 0x04),
+            
+            # 惊吓模式 (0x05)
+            (['panic', 'jing xia', '惊吓', '害怕', '危险', 'danger', 'three', '三', '三根', '三个'], 0x05),
+        ]
+        
+        for keywords, cmd in command_map:
+            for keyword in keywords:
+                if keyword in text_lower:
+                    print(f"[Worker-Voice] Voice command matched: '{keyword}' in '{text}' -> {hex(cmd)}")
+                    return cmd
+        
+        print(f"[Worker-Voice] Unrecognized voice command: '{text}'")
+        return None
 
     def recognize_speech(self) -> int | None:
-        """从队列抽取音频数据，调度 ASR 并返回对齐下位机的模式状态码"""
-        if self.model is None or self.audio_queue.empty():
-            return None
-
+        """识别语音并返回命令代码"""
         try:
+            # 获取音频数据
             audio_block = self.audio_queue.get_nowait()
-            audio_data = np.squeeze(audio_block)
-
-            # 强转数据类型，确保 moonshine 接收到合法的标准 float32 数组
-            if audio_data.dtype != np.float32:
-                audio_data = audio_data.astype(np.float32)
-
-            text = ""
-            # 调度模型前向推理
-            if hasattr(self.model, 'moonshine_api') and hasattr(self.model.moonshine_api, 'transcribe'):
-                result = self.model.moonshine_api.transcribe(audio_data)
-            elif hasattr(self.model, 'transcribe'):
-                result = self.model.transcribe(audio_data)
-            elif hasattr(self.model, 'Transcript'):
-                result = self.model.Transcript(audio_data)
-            else:
-                result = None
-
-            # ======= 【防御性类型清洗】 =======
-            if result is not None:
-                # 检查 result 本身是否是 numpy 的数值类型（防止它本身变成 numpy.float32）
-                if isinstance(result, (np.ndarray, np.number)):
-                    text = ""
-                elif hasattr(result, 'text') and isinstance(result.text, str):
-                    text = str(result.text)
-                elif isinstance(result, dict) and 'text' in result:
-                    text = str(result['text'])
-                else:
-                    # 如果返回的是特殊结构体对象，安全地尝试转为字符串
-                    try:
-                        text = str(result)
-                    except:
-                        text = ""
-
-            # 过滤掉干扰字符或无意义的类名
-            text = text.strip().replace(" ", "")
-            if not text or "Transcript" in text or "Object" in text or len(text) < 1:
+            
+            if len(audio_block) == 0 or self.rec is None:
                 return None
-
-            print(f">>> [Voice Subsystem ASR Output]: {text}")
-
-            # ======= 离散模式状态码转换 =======
-            if any(k in text for k in ["追踪", "跟着我", "启动", "过来"]):
-                return 0x01  # MODE_TRACK
-            elif any(k in text for k in ["休眠", "退下", "停止", "再见"]):
-                return 0x03  # MODE_HOME
-            elif any(k in text for k in ["开心", "真棒", "乖", "哈哈"]):
-                return 0x04  # MODE_HAPPY
-            elif any(k in text for k in ["危险", "别动", "救命", "啊"]):
-                return 0x05  # MODE_PANIC
-            return None
+            
+            # 转换为 int16 格式（Vosk 需要）
+            int16_data = (audio_block * 32767).astype(np.int16)
+            
+            # 处理音频数据
+            if self.rec.AcceptWaveform(int16_data.tobytes()):
+                result = json.loads(self.rec.Result())
+                text = result.get('text', '')
+                
+                if text and len(text) > 0:
+                    print(f"[Worker-Voice] Recognized: '{text}'")
+                    return self._map_command_to_hex(text)
+                    
+        except queue.Empty:
+            pass
         except Exception as e:
-            # 内部静默，防止疯狂打印刷屏阻塞主总线
-            return None
+            print(f"[Worker-Voice] ERROR: Speech recognition error: {e}")
+        
+        return None
+
+    def stop_listening(self):
+        """停止音频流"""
+        if self.stream:
+            self.stream.stop()
+            self.stream.close()
+            self.stream = None
+            print("INFO: Voice stream stopped")

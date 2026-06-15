@@ -9,7 +9,9 @@ typedef enum {
 	MODE_IDLE = 0x00,
 	MODE_TRACK = 0x01,
 	MODE_LOCK = 0x02,
-	MODE_HOME = 0x03
+	MODE_HOME = 0x03,
+	MODE_HAPPY = 0x04,
+	MODE_PANIC = 0x05
 
 }GimbalMode_t;
 
