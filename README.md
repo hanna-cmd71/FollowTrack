@@ -1,6 +1,6 @@
 # Multi-Modal Bionic Gimbal Interaction System (多模态仿生云台交互系统)
 
-本项目是一个基于分布式多并发架构的智能仿生云台交互系统。系统集成了 YOLOv8 人脸动态追踪、MediaPipe 手势三维空间几何行为识别以及 Moonshine 边缘端离散语音流唤醒，通过跨模态决策树并轨融合算法，实现对下位机双轴舵机云台的时序平滑控制，并同步在 OLED 屏幕上渲染仿生拟人化表情。
+本项目是一个基于分布式多并发架构的智能仿生云台交互系统。系统集成了 YOLOv8 人脸动态追踪、MediaPipe 手势三维空间几何行为识别以及 vosk 边缘端离散语音流唤醒，通过跨模态决策树并轨融合算法，实现对下位机双轴舵机云台的时序平滑控制，并同步在 OLED 屏幕上渲染仿生拟人化表情。
 
 ---
 
@@ -23,8 +23,22 @@
 
 ```bash
 pip install opencv-python numpy pyserial ultralytics mediapipe sounddevice
-# 如果使用 Moonshine 语音流唤醒引擎
-pip install moonshine-voice  
+
+# 创建模型目录
+mkdir -p models
+cd models
+
+# 下载中文小模型（约42MB，速度快）
+# 使用 PowerShell
+Invoke-WebRequest -Uri "https://alphacephei.com/vosk/models/vosk-model-small-cn-0.22.zip" -OutFile "vosk-model-small-cn-0.22.zip"
+
+# 解压（使用Windows自带功能或安装7-Zip）
+Expand-Archive -Path "vosk-model-small-cn-0.22.zip" -DestinationPath "."
+
+# 重命名文件夹（去掉版本号）
+Rename-Item "vosk-model-small-cn-0.22" "vosk-model-small-cn"
+
+cd ..
 
 ```
 
