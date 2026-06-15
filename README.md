@@ -17,6 +17,14 @@
 
 下位机
 
+## 🛠️ 系统架构总览 (System Architecture Overview)
+
+本项目采用**分层模块化设计**，实现了集成了 **YOLO 视觉追踪**、**智能仿生表情交互**、**闭环控制**与**实时数据可视化调试**的桌面级智能云台系统。
+
+---
+
+### 📊 架构拓扑图
+
 ```mermaid
 graph TD
     %% 样式定义
@@ -38,7 +46,7 @@ graph TD
 
     subgraph Layer3 [协议与通信层 Communication Layer]
         E["[protocol] 上游视觉(YOLO)数据解析"]
-        F["[vofa] VOFA+ 协议(JustFloat/Fire)"]
+        F["[vofa] VOFA+ 协议(JustFloat)"]
     end
 
     subgraph Layer4 [硬件驱动层 Hardware Driver Layer]
@@ -47,16 +55,19 @@ graph TD
     end
 
     %% 数据与控制流向
-    Layer1 --> Layer2
-    Layer2 --> Layer3
-    Layer3 --> Layer4
+    E --> A
+    A --> D
+    D --> C
+    C --> G
+    A --> B
+    B --> H
+    C --> F
 
     %% 应用样式
     class A,B app;
     class C,D algo;
     class E,F comm;
     class G,H hw;
-
 
 ---
 
