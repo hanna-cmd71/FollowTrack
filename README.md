@@ -16,13 +16,6 @@
 * **`core/messenger.py`**：纯非阻塞瞬时分发串口协议层。
 
 下位机
-## 🛠️ 系统架构总览 (System Architecture Overview)
-
-本项目采用**分层模块化设计**，实现了集成了 **YOLO 视觉追踪**、**智能仿生表情交互**、**闭环控制**与**实时数据可视化调试**的桌面级智能云台系统。
-
----
-
-### 📊 架构拓扑图
 
 ```mermaid
 graph TD
@@ -63,10 +56,14 @@ graph TD
     C --> F
 
     %% 应用样式
-    class A,B app;
-    class C,D algo;
-    class E,F comm;
-    class G,H hw;
+    class A app;
+    class B app;
+    class C algo;
+    class D algo;
+    class E comm;
+    class F comm;
+    class G hw;
+    class H hw;
 
 ---
 
